@@ -1,0 +1,1 @@
+Adventures in reviewing [Functional programming for Mortals](https://leanpub.com/fpmortals/) by Sam Halliday.
