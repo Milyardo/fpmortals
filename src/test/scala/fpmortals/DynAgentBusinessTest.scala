@@ -16,9 +16,8 @@ class DynAgentBusinessTest extends FlatSpec with Matchers {
     val mutable = new Mutable(world)
     import mutable._
 
-    val old = world.copy(alive = Map.empty,
-      pending = Map(node1 -> time2),
-      time = time2)
+    val old =
+      world.copy(alive = Map.empty, pending = Map(node1 -> time2), time = time2)
     program.update(old) shouldBe world
   }
 
@@ -49,7 +48,8 @@ class DynAgentBusinessTest extends FlatSpec with Matchers {
   }
 
   it should "don’t shut down agents if nodes are too young" in {
-    val hasYoungAgents = needsAgents.copy(backlog = 0, alive = Map(node1 -> time1), time = time2)
+    val hasYoungAgents =
+      needsAgents.copy(backlog = 0, alive = Map(node1 -> time1), time = time2)
     val mutable = new Mutable(hasYoungAgents)
     import mutable._
 
@@ -57,16 +57,19 @@ class DynAgentBusinessTest extends FlatSpec with Matchers {
     mutable.stopped shouldBe 0
   }
   it should "shut down agents when there is no backlog and nodes will shortly incur new costs" in {
-    val hasOldAgents = needsAgents.copy(backlog = 0, alive = Map(node1 -> time1), time = time3)
+    val hasOldAgents =
+      needsAgents.copy(backlog = 0, alive = Map(node1 -> time1), time = time3)
     val mutable = new Mutable(hasOldAgents)
     import mutable._
 
-    program.act(hasOldAgents) shouldBe hasOldAgents.copy(pending = Map(node1 -> time3))
+    program.act(hasOldAgents) shouldBe hasOldAgents.copy(
+      pending = Map(node1 -> time3))
     mutable.stopped shouldBe 1
   }
 
   it should "shut down agents, even if they are potentially doing work, if they are too old" in {
-    val hasOldAgents = needsAgents.copy(backlog = 0, alive = Map(node1 -> time1),  time = time4)
+    val hasOldAgents =
+      needsAgents.copy(backlog = 0, alive = Map(node1 -> time1), time = time4)
     val mutable = new Mutable(hasOldAgents)
     import mutable._
 
@@ -76,7 +79,8 @@ class DynAgentBusinessTest extends FlatSpec with Matchers {
   }
 
   it should "ignore unresponsive pending actions during update" in {
-    val hasUnresponsiveActions = needsAgents.copy(backlog = 0, pending = Map(node1 -> time4),  time = time1)
+    val hasUnresponsiveActions =
+      needsAgents.copy(backlog = 0, pending = Map(node1 -> time4), time = time1)
     val mutable = new Mutable(hasUnresponsiveActions)
     import mutable._
 

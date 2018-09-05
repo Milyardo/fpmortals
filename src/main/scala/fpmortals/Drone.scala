@@ -31,7 +31,9 @@ object Epoch {
   object EpochInterpolator extends Verifier[Epoch] {
     def check(s: String): Either[(Int, String), Epoch] =
       try Right(Epoch(Instant.parse(s).toEpochMilli))
-      catch { case _: DateTimeParseException => Left((0, "not in ISO-8601 format")) }
+      catch {
+        case _: DateTimeParseException => Left((0, "not in ISO-8601 format"))
+      }
   }
 }
 
@@ -53,22 +55,19 @@ trait DynAgents[F[_]] {
 final class DynAgentsModule[F[_]: Monad](D: Drone[F], M: Machines[F])
     extends DynAgents[F] {
   override def initial: F[WorldView] =
-    for {
-      db <- D.getBacklog
-      da <- D.getAgents
-      mm <- M.getManaged
-      ma <- M.getAlive
-      mt <- M.getTime
-    } yield WorldView(db, da, mm, ma, Map.empty, mt)
-
-  override def update(old: WorldView): F[WorldView] = for {
-    snap <- initial
-    changed = symdiff(old.alive.keySet, snap.alive.keySet)
-    pending = (old.pending -- changed).filterNot {
-      case (_, started) => (snap.time - started) >= 10.minutes
+    ^^^^(D.getBacklog, D.getAgents, M.getManaged, M.getAlive, M.getTime) {
+      case (db, da, mm, ma, mt) => WorldView(db, da, mm, ma, Map.empty, mt)
     }
-    update = snap.copy(pending = pending)
-  } yield update
+
+  override def update(old: WorldView): F[WorldView] =
+    for {
+      snap <- initial
+      changed = symdiff(old.alive.keySet, snap.alive.keySet)
+      pending = (old.pending -- changed).filterNot {
+        case (_, started) => (snap.time - started) >= 10.minutes
+      }
+      update = snap.copy(pending = pending)
+    } yield update
 
   private def symdiff[T](a: Set[T], b: Set[T]): Set[T] =
     (a union b) -- (a intersect b)
@@ -81,36 +80,39 @@ final class DynAgentsModule[F[_]: Monad](D: Drone[F], M: Machines[F])
       } yield update
 
     case Stale(nodes) =>
-      nodes.foldLeftM(world) { (world, n) =>
-        for {
-          _ <- M.stop(n)
-          update = world.copy(pending = world.pending + (n -> world.time))
-        } yield update
-      }
+      for {
+        stopped <- nodes.traverse(M.stop)
+        updates = stopped.map(_ -> world.time).toList.toMap
+        update = world.copy(pending = world.pending ++ updates)
+      } yield update
 
     case _ => world.pure[F]
   }
 }
 
-
 private object NeedsAgent {
   def unapply(world: WorldView): Option[MachineNode] = world match {
     case WorldView(backlog, 0, managed, alive, pending, _)
-      if backlog > 0 && alive.isEmpty && pending.isEmpty
-    => Option(managed.head)
+        if backlog > 0 && alive.isEmpty && pending.isEmpty =>
+      Option(managed.head)
     case _ => None
   }
 }
 
-
 private object Stale {
-  def unapply(world: WorldView): Option[NonEmptyList[MachineNode]] = world match {
-    case WorldView(backlog, _, _, alive, pending, time) if alive.nonEmpty =>
-      (alive -- pending.keys).collect {
-        case (n, started) if backlog == 0 && (time - started).toMinutes % 60 >= 58 => n
-        case (n, started) if (time - started) >= 5.hours => n
-      }.toList.toNel
+  def unapply(world: WorldView): Option[NonEmptyList[MachineNode]] =
+    world match {
+      case WorldView(backlog, _, _, alive, pending, time) if alive.nonEmpty =>
+        (alive -- pending.keys)
+          .collect {
+            case (n, started)
+                if backlog == 0 && (time - started).toMinutes % 60 >= 58 =>
+              n
+            case (n, started) if (time - started) >= 5.hours => n
+          }
+          .toList
+          .toNel
 
-    case _ => None
-  }
+      case _ => None
+    }
 }
