@@ -20,3 +20,5 @@ libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.5" % "test"
 
 addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.7")
 addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full)
+
+enablePlugins(JmhPlugin)
