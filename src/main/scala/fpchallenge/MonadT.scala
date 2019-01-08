@@ -1,4 +1,4 @@
-package fpmortals
+package fpchallenge
 
 import scalaz._, Scalaz._
 

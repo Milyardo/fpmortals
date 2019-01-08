@@ -52,7 +52,7 @@ trait DynAgents[F[_]] {
   def act(world: WorldView): F[WorldView]
 }
 
-final class DynAgentsModule[F[_]: Monad](D: Drone[F], M: Machines[F])
+final class DynAgentsModule[F[_]: Applicative](D: Drone[F], M: Machines[F])
     extends DynAgents[F] {
   override def initial: F[WorldView] =
     ^^^^(D.getBacklog, D.getAgents, M.getManaged, M.getAlive, M.getTime) {
@@ -60,32 +60,27 @@ final class DynAgentsModule[F[_]: Monad](D: Drone[F], M: Machines[F])
     }
 
   override def update(old: WorldView): F[WorldView] =
-    for {
-      snap <- initial
-      changed = symdiff(old.alive.keySet, snap.alive.keySet)
-      pending = (old.pending -- changed).filterNot {
+    initial.map({snap =>
+      val changed = symdiff(old.alive.keySet, snap.alive.keySet)
+      val pending = (old.pending -- changed).filterNot {
         case (_, started) => (snap.time - started) >= 10.minutes
       }
-      update = snap.copy(pending = pending)
-    } yield update
+      snap.copy(pending = pending)
+    })
 
   private def symdiff[T](a: Set[T], b: Set[T]): Set[T] =
     (a union b) -- (a intersect b)
 
   override def act(world: WorldView): F[WorldView] = world match {
     case NeedsAgent(node) =>
-      for {
-        _ <- M.start(node)
-        update = world.copy(pending = Map(node -> world.time))
-      } yield update
-
+      M.start(node) >| world.copy(pending = Map(node -> world.time))
     case Stale(nodes) =>
-      for {
-        stopped <- nodes.traverse(M.stop)
-        updates = stopped.map(_ -> world.time).toList.toMap
-        update = world.copy(pending = world.pending ++ updates)
-      } yield update
-
+      nodes.traverse { node =>
+        M.stop(node) >| node
+      }.map { stopped =>
+        val updates = stopped.strengthR(world.time).toList.toMap
+        world.copy(pending = world.pending ++ updates)
+      }
     case _ => world.pure[F]
   }
 }
@@ -115,4 +110,25 @@ private object Stale {
 
       case _ => None
     }
+}
+
+final class Monitored[U[_]: Functor](program: DynAgents[U]) {
+  type F[a] = Const[Set[MachineNode], a]
+  private val D = new Drone[F] {
+    def getBacklog: F[Int] = Const(Set.empty)
+    def getAgents: F[Int]  = Const(Set.empty)
+  }
+  private val M = new Machines[F] {
+    def getAlive: F[Map[MachineNode, Epoch]]     = Const(Set.empty)
+    def getManaged: F[NonEmptyList[MachineNode]] = Const(Set.empty)
+    def getTime: F[Epoch]                        = Const(Set.empty)
+    def start(node: MachineNode): F[MachineNode]        = Const(Set.empty)
+    def stop(node: MachineNode): F[MachineNode]         = Const(Set(node))
+  }
+  val monitor = new DynAgentsModule[F](D, M)
+
+  def act(world: WorldView): U[(WorldView, Set[MachineNode])] = {
+    val stopped = monitor.act(world).getConst
+    program.act(world).strengthR(stopped)
+  }
 }
