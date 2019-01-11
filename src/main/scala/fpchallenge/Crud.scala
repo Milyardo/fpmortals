@@ -21,13 +21,11 @@ object Crud {
         read = Kleisli(g.read).andThenK(f.read).run,
         create = f.create andThen g.create,
         update = (a, c) => {
-          f.update(null,c)
-          g.update(a,null)
+          f.update(null,c) //(B,C) => Unit???
+          g.update(a,null) //(A,B) => Unit???
         },
-        delete = {
-          f.delete //???
-          g.delete
-        }
+        delete = g.delete //f: B => Unit ???
+
       )
   }
 }

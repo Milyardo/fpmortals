@@ -29,9 +29,42 @@ class Mutable(state: WorldView) {
     def getAlive: Map[MachineNode, Epoch] = state.alive
     def getManaged: NonEmptyList[MachineNode] = state.managed
     def getTime: Epoch = state.time
-    def start(node: MachineNode): MachineNode = { started += 1 ; node }
-    def stop(node: MachineNode): MachineNode = { stopped += 1 ; node }
+    def start(node: MachineNode): MachineNode = { started += 1; node }
+    def stop(node: MachineNode): MachineNode = { stopped += 1; node }
   }
 
   val program = new DynAgentsModule[Id](D, M)
+}
+
+final case class World(
+    backlog: Int,
+    agents: Int,
+    managed: NonEmptyList[MachineNode],
+    alive: Map[MachineNode, Epoch],
+    started: Set[MachineNode],
+    stopped: Set[MachineNode],
+    time: Epoch
+)
+
+import State.{ get, modify }
+object StateImpl {
+  type F[a] = State[World, a]
+
+  private val D = new Drone[F] {
+    def getBacklog: F[Int] = get.map(_.backlog)
+    def getAgents: F[Int]  = get.map(_.agents)
+  }
+
+  private val M = new Machines[F] {
+    def getAlive: F[Map[MachineNode, Epoch]]   = get.map(_.alive)
+    def getManaged: F[NonEmptyList[MachineNode]] = get.map(_.managed)
+    def getTime: F[Epoch]                      = get.map(_.time)
+
+    def start(node: MachineNode): F[MachineNode] =
+      modify[World](w => w.copy(started = w.started + node)).map(_ => node)
+    def stop(node: MachineNode): F[MachineNode] =
+      modify[World](w => w.copy(stopped = w.stopped + node)).map(_ => node)
+  }
+
+  val program = new DynAgentsModule[F](D, M)
 }
